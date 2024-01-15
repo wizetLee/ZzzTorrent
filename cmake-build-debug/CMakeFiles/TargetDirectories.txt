@@ -1,0 +1,3 @@
+/Users/wizet/Documents/CPP/ZzzTorrent/cmake-build-debug/CMakeFiles/ZzzTorrent.dir
+/Users/wizet/Documents/CPP/ZzzTorrent/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/wizet/Documents/CPP/ZzzTorrent/cmake-build-debug/CMakeFiles/rebuild_cache.dir
