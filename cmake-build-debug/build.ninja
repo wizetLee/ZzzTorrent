@@ -52,7 +52,7 @@ build cmake_object_order_depends_target_ZzzTorrent: phony || CMakeFiles/ZzzTorre
 build CMakeFiles/ZzzTorrent.dir/main.cpp.o: CXX_COMPILER__ZzzTorrent_Debug /Users/wizet/Documents/CPP/ZzzTorrent/main.cpp || cmake_object_order_depends_target_ZzzTorrent
   DEFINES = -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB
   DEP_FILE = CMakeFiles/ZzzTorrent.dir/main.cpp.o.d
-  FLAGS = -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.1.sdk -fcolor-diagnostics -std=gnu++11
+  FLAGS = -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.1.sdk -fcolor-diagnostics -std=gnu++17
   INCLUDES = -I/opt/homebrew/Cellar/boost/1.83.0/include -isystem /opt/homebrew/include
   OBJECT_DIR = CMakeFiles/ZzzTorrent.dir
   OBJECT_FILE_DIR = CMakeFiles/ZzzTorrent.dir
