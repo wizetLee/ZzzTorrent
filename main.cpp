@@ -2,6 +2,7 @@
 #include <thread>
 #include <chrono>
 #include <fstream>
+#include <csignal>
 
 #include <libtorrent/session.hpp>
 #include <libtorrent/session_params.hpp>
@@ -40,32 +41,47 @@ char const* state(lt::torrent_status::state_t s)
 #endif
 }
 
+std::vector<char> load_file(char const* filename)
+{
+  std::ifstream ifs(filename, std::ios_base::binary);
+  ifs.unsetf(std::ios_base::skipws);
+  return {std::istream_iterator<char>(ifs), std::istream_iterator<char>()};
+}
+
+// set when we're exiting
+std::atomic<bool> shut_down{false};
+
+void sighandler(int) { shut_down = true; }
+
 } // anonymous namespace
 
 int main(int argc, char const* argv[]) try
 {
+
 //  if (argc != 2) {
 //    std::cerr << "usage: " << argv[0] << " <magnet-url>" << std::endl;
 //    return 1;
 //  }
-  std::string link = "magnet:?xt=urn:btih:9d67dbd63c4fdbdc621908c408143d9e86792f1a&dn=Pokemon.the.Movie.I.Choose.You.2017.DUBBED.720p.BluRay.x264.DTS-FGT&xl=3165729318";
 
-  lt::settings_pack pack;
-  pack.set_int(lt::settings_pack::alert_mask
-               , lt::alert_category::error
-                   | lt::alert_category::storage
-                   | lt::alert_category::status);
+  std::string magnetLink = "magnet:?xt=urn:btih:e791b5e55abfc6a1f2c84d7e98bf0040014dc700";
 
-  lt::session ses(pack);
+  // load session parameters
+  auto session_params = load_file(".session");
+  lt::session_params params = session_params.empty()
+      ? lt::session_params() : lt::read_session_params(session_params);
+  params.settings.set_int(lt::settings_pack::alert_mask
+                          , lt::alert_category::error
+                              | lt::alert_category::storage
+                              | lt::alert_category::status
+                          );
+
+  lt::session ses(params);
   clk::time_point last_save_resume = clk::now();
 
   // load resume data from disk and pass it in as we add the magnet link
-  std::ifstream ifs(".resume_file", std::ios_base::binary);
-  ifs.unsetf(std::ios_base::skipws);
-  std::vector<char> buf{std::istream_iterator<char>(ifs)
-                            , std::istream_iterator<char>()};
+  auto buf = load_file(".resume_file");
 
-  lt::add_torrent_params magnet = lt::parse_magnet_uri(link);
+  lt::add_torrent_params magnet = lt::parse_magnet_uri(magnetLink);
   if (buf.size()) {
     lt::add_torrent_params atp = lt::read_resume_data(buf);
     if (atp.info_hashes == magnet.info_hashes) magnet = std::move(atp);
@@ -77,29 +93,43 @@ int main(int argc, char const* argv[]) try
   // added
   lt::torrent_handle h;
 
+  std::signal(SIGINT, &sighandler);
+
   // set when we're exiting
   bool done = false;
   for (;;) {
     std::vector<lt::alert*> alerts;
     ses.pop_alerts(&alerts);
 
+    if (shut_down) {
+      shut_down = false;
+      auto const handles = ses.get_torrents();
+      if (handles.size() == 1) {
+        handles[0].save_resume_data(lt::torrent_handle::only_if_modified
+                                    | lt::torrent_handle::save_info_dict);
+        done = true;
+      }
+    }
+
     for (lt::alert const* a : alerts) {
       if (auto at = lt::alert_cast<lt::add_torrent_alert>(a)) {
         h = at->handle;
       }
+      else
       // if we receive the finished alert or an error, we're done
       if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
         h.save_resume_data(lt::torrent_handle::only_if_modified
                            | lt::torrent_handle::save_info_dict);
         done = true;
       }
+      else
       if (lt::alert_cast<lt::torrent_error_alert>(a)) {
         std::cout << a->message() << std::endl;
         done = true;
         h.save_resume_data(lt::torrent_handle::only_if_modified
                            | lt::torrent_handle::save_info_dict);
       }
-
+      else
       // when resume data is ready, save it
       if (auto rd = lt::alert_cast<lt::save_resume_data_alert>(a)) {
         std::ofstream of(".resume_file", std::ios_base::binary);
@@ -108,11 +138,12 @@ int main(int argc, char const* argv[]) try
         of.write(b.data(), int(b.size()));
         if (done) goto done;
       }
-
+      else
       if (lt::alert_cast<lt::save_resume_data_failed_alert>(a)) {
         if (done) goto done;
       }
 
+      else
       if (auto st = lt::alert_cast<lt::state_update_alert>(a)) {
         if (st->status.empty()) continue;
 
@@ -126,7 +157,16 @@ int main(int argc, char const* argv[]) try
                   << s.num_peers << " peers)\x1b[K";
         std::cout.flush();
       }
+      else if (auto st = libtorrent::alert_cast<lt::listen_failed_alert>(a)) {
+        //FIXME:
+        std::cout << "listen_failed_alert：" << st->message() << std::endl;
+      }
+      else {
+        std::cout << ":::" << a->message() << std::endl;
+      }
     }
+
+    //FIXME: Error -----  Local Service Discovery startup error [::1]: Can't assign requested address
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     // ask the session to post a state_update_alert, to update our
@@ -142,6 +182,15 @@ int main(int argc, char const* argv[]) try
   }
 
 done:
+  std::cout << "\nsaving session state" << std::endl;
+  {
+    std::ofstream of(".session", std::ios_base::binary);
+    of.unsetf(std::ios_base::skipws);
+    auto const b = write_session_params_buf(ses.session_state()
+                                                , lt::save_state_flags_t::all());
+    of.write(b.data(), int(b.size()));
+  }
+
   std::cout << "\ndone, shutting down" << std::endl;
 }
 catch (std::exception& e)
